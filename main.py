@@ -8,10 +8,11 @@ import pandas as pd
 def get_data():
     # BP energy data
     # https://www.bp.com/en/global/corporate/energy-economics/statistical-review-of-world-energy.html
-    bp_url = "https://www.bp.com/content/dam/bp/business-sites/en/global/corporate/xlsx/energy-economics/statistical-review/bp-stats-review-2021-all-data.xlsx"
+    bp_url = "https://www.bp.com/content/dam/bp/business-sites/en/global/corporate/xlsx/energy-economics/statistical-review/bp-stats-review-2022-all-data.xlsx"
+
     # UN population data
     # https://population.un.org/wpp/Download/Standard/CSV/
-    un_url = "https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/CSV_FILES/WPP2019_TotalPopulationBySex.csv"
+    un_url = "https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/CSV_FILES/WPP2022_TotalPopulationBySex.zip"
 
     path = "data/"
     bp_file, un_file = path + bp_url.split('/')[-1], path + un_url.split('/')[-1]

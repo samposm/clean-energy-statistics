@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import numpy as np
 import os
 import pathlib
 import requests
@@ -65,15 +66,37 @@ def read_bp_data(bp_file):
 def read_un_data(un_file):
     return pd.read_csv(un_file, low_memory=False)
 
+not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
+    'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
+    'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
+    'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
+
+def clean_bp(df):
+    # drop rows from the end of the excel table
+    imax = (df.iloc[:, 0] == "Total World").idxmax()
+    rows1 = df.index[df.index > imax].tolist()
+    # drop empty rows
+    rows2 = list(np.where(df.iloc[:, 0].isnull())[0])
+    # drop rows that are not countries
+    rows3 = list(np.where(df.iloc[:, 0].isin(not_countries))[0])
+    # now drop the rows
+    rows_to_drop = rows1 + rows2 + rows3
+    df.drop(labels=rows_to_drop, axis=0, inplace=True)
+    # drop last 3 columns
+    df = df.iloc[:, :-3]
+    return df
+
 def main():
     bp_file, un_file = download_bp_data(), download_un_data()
     df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
     df_population = read_un_data(un_file)
 
+    df_hydro, df_nuclear, df_solar, df_wind = clean_bp(df_hydro), clean_bp(df_nuclear), clean_bp(df_solar), clean_bp(df_wind)
+
     print(df_hydro)
-    print(df_nuclear)
-    print(df_solar)
-    print(df_wind)
-    print(df_population)
+    #print(df_nuclear)
+    #print(df_solar)
+    #print(df_wind)
+    #print(df_population)
 
 if __name__ == "__main__": main()

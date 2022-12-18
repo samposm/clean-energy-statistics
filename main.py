@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
+import openpyxl  # not used directly, but used by pd.read_excel
 import os
 import pathlib
 import requests
@@ -86,6 +87,12 @@ def clean_bp(df):
     df = df.iloc[:, :-3]
     return df
 
+def list_countries(*args):
+    countries_set = set()
+    for df in args:
+        countries_set.update(df.iloc[:, 0].tolist())
+    return sorted(countries_set)
+
 def main():
     bp_file, un_file = download_bp_data(), download_un_data()
     df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
@@ -93,7 +100,10 @@ def main():
 
     df_hydro, df_nuclear, df_solar, df_wind = clean_bp(df_hydro), clean_bp(df_nuclear), clean_bp(df_solar), clean_bp(df_wind)
 
-    print(df_hydro)
+    countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
+    print(countries)
+
+    #print(df_hydro)
     #print(df_nuclear)
     #print(df_solar)
     #print(df_wind)

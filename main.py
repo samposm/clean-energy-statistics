@@ -2,26 +2,49 @@
 
 import os
 import pathlib
-import urllib.request
+import requests
+import ssl
 import pandas as pd
+import urllib3
 
-def get_data():
+data_path = "data/"
+
+def download_bp_data():
     # BP energy data
     # https://www.bp.com/en/global/corporate/energy-economics/statistical-review-of-world-energy.html
     bp_url = "https://www.bp.com/content/dam/bp/business-sites/en/global/corporate/xlsx/energy-economics/statistical-review/bp-stats-review-2022-all-data.xlsx"
+    bp_file = data_path + bp_url.split('/')[-1]
+    pathlib.Path(data_path).mkdir(parents=True, exist_ok=True)
+    if not os.path.isfile(bp_file):
+        response = requests.get(bp_url)
+        with open(bp_file, "wb") as f: f.write(response.content)
+    return bp_file
 
+def download_un_data():
     # UN population data
     # https://population.un.org/wpp/Download/Standard/CSV/
     un_url = "https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/CSV_FILES/WPP2022_TotalPopulationBySex.zip"
+    un_file = data_path + un_url.split('/')[-1]
+    pathlib.Path(data_path).mkdir(parents=True, exist_ok=True)
 
-    path = "data/"
-    bp_file, un_file = path + bp_url.split('/')[-1], path + un_url.split('/')[-1]
-    pathlib.Path(path).mkdir(parents=True, exist_ok=True)
-    for file_name in [bp_file, un_file]:
-        if not os.path.isfile(file_name):
-            urllib.request.urlretrieve(bp_url, file_name)
+    # UN web server is not up to the modern safety standards of OpenSSL 3, needs special connection
+    # https://stackoverflow.com/questions/71603314/ssl-error-unsafe-legacy-renegotiation-disabled
+    class CustomHttpAdapter (requests.adapters.HTTPAdapter):
+        def __init__(self, ssl_context=None, **kwargs):
+            self.ssl_context = ssl_context
+            super().__init__(**kwargs)
+        def init_poolmanager(self, connections, maxsize, block=False):
+            self.poolmanager = urllib3.poolmanager.PoolManager(num_pools=connections, maxsize=maxsize, block=block, ssl_context=self.ssl_context)
 
-    return bp_file, un_file
+    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    context.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
+    legacy_session = requests.session()
+    legacy_session.mount('https://', CustomHttpAdapter(context))
+
+    if not os.path.isfile(un_file):
+        response = legacy_session.get(un_url)
+        with open(un_file, "wb") as f: f.write(response.content)
+    return un_file
 
 def parse_bp_data(bp_file):
 
@@ -44,7 +67,7 @@ def parse_bp_data(bp_file):
     print(df_solar)
 
 def main():
-    bp_file, un_file = get_data()
+    bp_file, un_file = download_bp_data(), download_un_data()
     parse_bp_data(bp_file)
 
 if __name__ == "__main__": main()

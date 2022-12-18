@@ -46,28 +46,34 @@ def download_un_data():
         with open(un_file, "wb") as f: f.write(response.content)
     return un_file
 
-def parse_bp_data(bp_file):
-
+def read_bp_data(bp_file):
     sheet_names = {
-        'nuclear': "Nuclear Generation - TWh",
         'hydro':   "Hydro Generation - TWh",
+        'nuclear': "Nuclear Generation - TWh",
         'solar':   "Solar Generation - TWh",
         'wind':    "Wind Generation - TWh"
     }
     header_row = 2
 
-    df_nuclear = pd.read_excel(bp_file, sheet_name=sheet_names['nuclear'], header=header_row)
     df_hydro   = pd.read_excel(bp_file, sheet_name=sheet_names['hydro'], header=header_row)
-    df_wind    = pd.read_excel(bp_file, sheet_name=sheet_names['wind'], header=header_row)
+    df_nuclear = pd.read_excel(bp_file, sheet_name=sheet_names['nuclear'], header=header_row)
     df_solar   = pd.read_excel(bp_file, sheet_name=sheet_names['solar'], header=header_row)
+    df_wind    = pd.read_excel(bp_file, sheet_name=sheet_names['wind'], header=header_row)
 
-    print(df_nuclear)
-    print(df_hydro)
-    print(df_wind)
-    print(df_solar)
+    return df_hydro, df_nuclear, df_solar, df_wind
+
+def read_un_data(un_file):
+    return pd.read_csv(un_file, low_memory=False)
 
 def main():
     bp_file, un_file = download_bp_data(), download_un_data()
-    parse_bp_data(bp_file)
+    df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
+    df_population = read_un_data(un_file)
+
+    print(df_hydro)
+    print(df_nuclear)
+    print(df_solar)
+    print(df_wind)
+    print(df_population)
 
 if __name__ == "__main__": main()

@@ -4,6 +4,7 @@ import numpy as np
 import openpyxl  # not used directly, but used by pd.read_excel
 import os
 import pathlib
+import pycountry
 import requests
 import ssl
 import pandas as pd
@@ -101,13 +102,25 @@ def main():
 
     df_population = read_un_data(un_file)
 
-    countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
+    bp_countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
+    un_countries = set(df_population["Location"].unique())
+
+    for c in bp_countries:
+        print(f"{c:<22} {c in un_countries}")
+        if not c in un_countries:
+            try:
+                names = pycountry.countries.search_fuzzy(c)
+                for n in names: print(f"  {n}")
+            except:
+                pass
+
+    #print(sorted(un_countries))
 
     #print(df_hydro)
     #print(df_nuclear)
     #print(df_solar)
     #print(df_wind)
-    print(df_population)
-    print(df_population.columns)
+    #print(df_population)
+    #print(df_population.columns)
 
 if __name__ == "__main__": main()

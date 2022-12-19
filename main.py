@@ -65,7 +65,8 @@ def read_bp_data(bp_file):
     return df_hydro, df_nuclear, df_solar, df_wind
 
 def read_un_data(un_file):
-    return pd.read_csv(un_file, low_memory=False)
+    df = pd.read_csv(un_file, low_memory=False)
+    return df[['ISO3_code', 'Location', 'Time', 'PopTotal']]  # Take only the columns we need
 
 not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
     'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
@@ -96,17 +97,17 @@ def list_countries(*args):
 def main():
     bp_file, un_file = download_bp_data(), download_un_data()
     df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
-    df_population = read_un_data(un_file)
-
     df_hydro, df_nuclear, df_solar, df_wind = clean_bp(df_hydro), clean_bp(df_nuclear), clean_bp(df_solar), clean_bp(df_wind)
 
+    df_population = read_un_data(un_file)
+
     countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
-    print(countries)
 
     #print(df_hydro)
     #print(df_nuclear)
     #print(df_solar)
     #print(df_wind)
-    #print(df_population)
+    print(df_population)
+    print(df_population.columns)
 
 if __name__ == "__main__": main()

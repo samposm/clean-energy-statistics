@@ -25,24 +25,6 @@ def download_data(url):
             f.write(response.content)
     return file
 
-def read_energy_data(file):
-    sheet_names = [
-        "Hydro Generation - TWh",
-        "Nuclear Generation - TWh",
-        "Solar Generation - TWh",
-        "Wind Generation - TWh"
-    ]
-    return [pd.read_excel(file, sheet_name=name, header=2) for name in sheet_names] 
-
-def read_un_data(un_file):
-    df = pd.read_csv(un_file, low_memory=False)
-    return df[['ISO3_code', 'Location', 'Time', 'PopTotal']]  # Take only the columns we need
-
-not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
-    'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
-    'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
-    'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
-
 def clean_data(df):
     # drop rows at the end of the excel table
     imax = (df.iloc[:, 0] == "Total World").idxmax()
@@ -55,6 +37,39 @@ def clean_data(df):
     rows_to_keep = ~(rows1 | rows2 | rows3)
     return df.loc[rows_to_keep].iloc[:, :-3]  # also drop last 3 columns
 
+def read_energy_data(file):
+    sheet_names = [
+        "Hydro Generation - TWh",
+        "Nuclear Generation - TWh",
+        "Solar Generation - TWh",
+        "Wind Generation - TWh"
+    ]
+    def make_data(sheet_name):
+        return (
+            # read excel sheet, get column names from 3rd row
+            pd.read_excel(file, sheet_name=sheet_name, header=2)
+            # clean data by dropping some rows and columns
+            .pipe(clean_data)
+            # change from wide to long format
+            .melt(id_vars="Terawatt-hours", var_name="Year", value_name=sheet_name)
+            .rename(columns={"Terawatt-hours": "Country"})
+            .sort_values(by=["Country", "Year"])
+            .set_index(["Country", "Year"])
+        )
+    dfs = [make_data(sheet_name) for sheet_name in sheet_names]
+    return pd.concat(dfs, axis=1).reset_index()
+
+def read_population_data(file):
+    return (
+        pd.read_csv(file, compression='gzip', low_memory=False)
+        .loc[:, ['ISO3_code', 'Location', 'Time', 'PopTotal']]  # only the columns we need
+    )
+
+not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
+    'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
+    'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
+    'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
+
 def list_countries(*args):
     countries_set = set()
     for df in args:
@@ -63,13 +78,12 @@ def list_countries(*args):
 
 def main():
     energy_file, population_file = download_data(energy_url), download_data(population_url)
-    hydro_df, nuclear_df, solar_df, wind_df = read_energy_data(energy_file)
-    hydro_df = clean_data(hydro_df)
-    nuclear_df = clean_data(nuclear_df)
-    solar_df = clean_data(solar_df)
-    wind_df = clean_data(wind_df)
+    energy_df = read_energy_data(energy_file)
+    population_df = read_population_data(population_file)
 
-    #df_population = read_un_data(un_file)
+    print(energy_df)
+    print(energy_df.columns)
+    #print(population_df)
 
     #bp_countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
     #un_countries = set(df_population["Location"].unique())

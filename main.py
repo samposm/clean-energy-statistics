@@ -1,12 +1,10 @@
-import numpy as np
-#import openpyxl  # not used directly, but used by pd.read_excel
 import os
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 import pycountry
 import requests
-import ssl
-import pandas as pd
-import urllib3
 
 data_path = Path(__file__).parent.absolute() / "data"
 Path(data_path).mkdir(parents=True, exist_ok=True)
@@ -27,21 +25,14 @@ def download_data(url):
             f.write(response.content)
     return file
 
-def read_bp_data(bp_file):
-    sheet_names = {
-        'hydro':   "Hydro Generation - TWh",
-        'nuclear': "Nuclear Generation - TWh",
-        'solar':   "Solar Generation - TWh",
-        'wind':    "Wind Generation - TWh"
-    }
-    header_row = 2
-
-    df_hydro   = pd.read_excel(bp_file, sheet_name=sheet_names['hydro'], header=header_row)
-    df_nuclear = pd.read_excel(bp_file, sheet_name=sheet_names['nuclear'], header=header_row)
-    df_solar   = pd.read_excel(bp_file, sheet_name=sheet_names['solar'], header=header_row)
-    df_wind    = pd.read_excel(bp_file, sheet_name=sheet_names['wind'], header=header_row)
-
-    return df_hydro, df_nuclear, df_solar, df_wind
+def read_energy_data(file):
+    sheet_names = [
+        "Hydro Generation - TWh",
+        "Nuclear Generation - TWh",
+        "Solar Generation - TWh",
+        "Wind Generation - TWh"
+    ]
+    return [pd.read_excel(file, sheet_name=name, header=2) for name in sheet_names] 
 
 def read_un_data(un_file):
     df = pd.read_csv(un_file, low_memory=False)
@@ -52,20 +43,17 @@ not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'O
     'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
     'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
 
-def clean_bp(df):
-    # drop rows from the end of the excel table
+def clean_data(df):
+    # drop rows at the end of the excel table
     imax = (df.iloc[:, 0] == "Total World").idxmax()
-    rows1 = df.index[df.index > imax].tolist()
+    rows1 = df.index > imax
     # drop empty rows
-    rows2 = list(np.where(df.iloc[:, 0].isnull())[0])
+    rows2 = df.iloc[:, 0].isnull()
     # drop rows that are not countries
-    rows3 = list(np.where(df.iloc[:, 0].isin(not_countries))[0])
-    # now drop the rows
-    rows_to_drop = rows1 + rows2 + rows3
-    df.drop(labels=rows_to_drop, axis=0, inplace=True)
-    # drop last 3 columns
-    df = df.iloc[:, :-3]
-    return df
+    rows3 = df.iloc[:, 0].isin(not_countries)
+
+    rows_to_keep = ~(rows1 | rows2 | rows3)
+    return df.loc[rows_to_keep].iloc[:, :-3]  # also drop last 3 columns
 
 def list_countries(*args):
     countries_set = set()
@@ -75,8 +63,11 @@ def list_countries(*args):
 
 def main():
     energy_file, population_file = download_data(energy_url), download_data(population_url)
-    #df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
-    #df_hydro, df_nuclear, df_solar, df_wind = clean_bp(df_hydro), clean_bp(df_nuclear), clean_bp(df_solar), clean_bp(df_wind)
+    hydro_df, nuclear_df, solar_df, wind_df = read_energy_data(energy_file)
+    hydro_df = clean_data(hydro_df)
+    nuclear_df = clean_data(nuclear_df)
+    solar_df = clean_data(solar_df)
+    wind_df = clean_data(wind_df)
 
     #df_population = read_un_data(un_file)
 

@@ -1,53 +1,31 @@
-#!/usr/bin/env python
-
 import numpy as np
-import openpyxl  # not used directly, but used by pd.read_excel
+#import openpyxl  # not used directly, but used by pd.read_excel
 import os
-import pathlib
+from pathlib import Path
 import pycountry
 import requests
 import ssl
 import pandas as pd
 import urllib3
 
-data_path = "data/"
+data_path = Path(__file__).parent.absolute() / "data"
+Path(data_path).mkdir(parents=True, exist_ok=True)
 
-def download_bp_data():
-    # BP energy data
-    # https://www.bp.com/en/global/corporate/energy-economics/statistical-review-of-world-energy.html
-    bp_url = "https://www.bp.com/content/dam/bp/business-sites/en/global/corporate/xlsx/energy-economics/statistical-review/bp-stats-review-2022-all-data.xlsx"
-    bp_file = data_path + bp_url.split('/')[-1]
-    pathlib.Path(data_path).mkdir(parents=True, exist_ok=True)
-    if not os.path.isfile(bp_file):
-        response = requests.get(bp_url)
-        with open(bp_file, "wb") as f: f.write(response.content)
-    return bp_file
+# Statistical Review of World Energy, data
+# https://www.energyinst.org/statistical-review
+energy_url = "https://www.energyinst.org/__data/assets/excel_doc/0020/1540550/EI-Stats-Review-All-Data.xlsx"
+# UN population data
+# https://population.un.org/wpp/downloads?folder=Standard%20Projections&group=CSV%20format
+population_url = "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_TotalPopulationBySex.csv.gz"
 
-def download_un_data():
-    # UN population data
-    # https://population.un.org/wpp/Download/Standard/CSV/
-    un_url = "https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/CSV_FILES/WPP2022_TotalPopulationBySex.zip"
-    un_file = data_path + un_url.split('/')[-1]
-    pathlib.Path(data_path).mkdir(parents=True, exist_ok=True)
-
-    # UN web server is not up to the modern safety standards of OpenSSL 3, needs special connection
-    # https://stackoverflow.com/questions/71603314/ssl-error-unsafe-legacy-renegotiation-disabled
-    class CustomHttpAdapter (requests.adapters.HTTPAdapter):
-        def __init__(self, ssl_context=None, **kwargs):
-            self.ssl_context = ssl_context
-            super().__init__(**kwargs)
-        def init_poolmanager(self, connections, maxsize, block=False):
-            self.poolmanager = urllib3.poolmanager.PoolManager(num_pools=connections, maxsize=maxsize, block=block, ssl_context=self.ssl_context)
-
-    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-    context.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
-    legacy_session = requests.session()
-    legacy_session.mount('https://', CustomHttpAdapter(context))
-
-    if not os.path.isfile(un_file):
-        response = legacy_session.get(un_url)
-        with open(un_file, "wb") as f: f.write(response.content)
-    return un_file
+def download_data(url):
+    filename = os.path.basename(url)
+    file = data_path / filename
+    if not os.path.isfile(file):
+        response = requests.get(url)
+        with open(file, "wb") as f:
+            f.write(response.content)
+    return file
 
 def read_bp_data(bp_file):
     sheet_names = {
@@ -96,23 +74,23 @@ def list_countries(*args):
     return sorted(countries_set)
 
 def main():
-    bp_file, un_file = download_bp_data(), download_un_data()
-    df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
-    df_hydro, df_nuclear, df_solar, df_wind = clean_bp(df_hydro), clean_bp(df_nuclear), clean_bp(df_solar), clean_bp(df_wind)
+    energy_file, population_file = download_data(energy_url), download_data(population_url)
+    #df_hydro, df_nuclear, df_solar, df_wind = read_bp_data(bp_file)
+    #df_hydro, df_nuclear, df_solar, df_wind = clean_bp(df_hydro), clean_bp(df_nuclear), clean_bp(df_solar), clean_bp(df_wind)
 
-    df_population = read_un_data(un_file)
+    #df_population = read_un_data(un_file)
 
-    bp_countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
-    un_countries = set(df_population["Location"].unique())
+    #bp_countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
+    #un_countries = set(df_population["Location"].unique())
 
-    for c in bp_countries:
-        print(f"{c:<22} {c in un_countries}")
-        if not c in un_countries:
-            try:
-                names = pycountry.countries.search_fuzzy(c)
-                for n in names: print(f"  {n}")
-            except:
-                pass
+    #for c in bp_countries:
+    #    print(f"{c:<22} {c in un_countries}")
+    #    if not c in un_countries:
+    #        try:
+    #            names = pycountry.countries.search_fuzzy(c)
+    #            for n in names: print(f"  {n}")
+    #        except:
+    #            pass
 
     #print(sorted(un_countries))
 

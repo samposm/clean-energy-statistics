@@ -12,9 +12,22 @@ Path(data_path).mkdir(parents=True, exist_ok=True)
 # Statistical Review of World Energy, data
 # https://www.energyinst.org/statistical-review
 energy_url = "https://www.energyinst.org/__data/assets/excel_doc/0020/1540550/EI-Stats-Review-All-Data.xlsx"
+sheet_names = [
+    "Hydro Generation - TWh",
+    "Nuclear Generation - TWh",
+    "Solar Generation - TWh",
+    "Wind Generation - TWh"
+]
+
 # UN population data
 # https://population.un.org/wpp/downloads?folder=Standard%20Projections&group=CSV%20format
 population_url = "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_TotalPopulationBySex.csv.gz"
+
+not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
+    'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
+    'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
+    'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
+
 
 def download_data(url):
     filename = os.path.basename(url)
@@ -38,12 +51,6 @@ def clean_data(df):
     return df.loc[rows_to_keep].iloc[:, :-3]  # also drop last 3 columns
 
 def read_energy_data(file):
-    sheet_names = [
-        "Hydro Generation - TWh",
-        "Nuclear Generation - TWh",
-        "Solar Generation - TWh",
-        "Wind Generation - TWh"
-    ]
     def make_data(sheet_name):
         return (
             # read excel sheet, get column names from 3rd row
@@ -65,45 +72,51 @@ def read_population_data(file):
         .loc[:, ['ISO3_code', 'Location', 'Time', 'PopTotal']]  # only the columns we need
     )
 
-not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
-    'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
-    'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
-    'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
-
-def list_countries(*args):
-    countries_set = set()
-    for df in args:
-        countries_set.update(df.iloc[:, 0].tolist())
-    return sorted(countries_set)
-
 def main():
+
     energy_file, population_file = download_data(energy_url), download_data(population_url)
     energy_df = read_energy_data(energy_file)
+    # df columns:
+    #   Country
+    #   Year
+    #   Hydro Generation - TWh
+    #   Nuclear Generation - TWh
+    #   Solar Generation - TWh
+    #   Wind Generation - TWh
+
     population_df = read_population_data(population_file)
+    # df columns: ISO3_code, Location, Time, PopTotal
+
+    country_replacements_energy = {
+        "China Hong Kong SAR": "Hong Kong",
+        "Czech Republic": "Czechia",
+        "Trinidad & Tobago": "Trinidad and Tobago",
+        "Turkey": "Türkiye",
+        "US": "United States",
+    }
+
+    country_replacements_population = {
+        "China, Hong Kong SAR": "Hong Kong",
+        "Iran (Islamic Republic of)" : "Iran",
+        "Republic of Korea": "South Korea",
+        "China, Taiwan Province of China": "Taiwan",
+        "United States of America": "United States",
+    }
+
+    energy_df["Country"] = energy_df["Country"].replace(country_replacements_energy)
+    population_df["Location"] = population_df["Location"].replace(country_replacements_population)
+
+    # Combine "Russian Federation" and "USSR" energy data
+    for col in sheet_names:
+        i_selection_rus = energy_df["Country"] == "Russian Federation"
+        i_selection_ussr = energy_df["Country"] == "USSR"
+        rus_vals = energy_df.loc[i_selection_rus, col].to_numpy()
+        ussr_vals = energy_df.loc[i_selection_ussr, col].to_numpy()
+        energy_df.loc[i_selection_rus, col] = rus_vals + ussr_vals
+
+    # Drop "USSR" rows
+    energy_df = energy_df[energy_df["Country"] != "USSR"]
 
     print(energy_df)
-    print(energy_df.columns)
-    #print(population_df)
-
-    #bp_countries = list_countries(df_hydro, df_nuclear, df_solar, df_wind)
-    #un_countries = set(df_population["Location"].unique())
-
-    #for c in bp_countries:
-    #    print(f"{c:<22} {c in un_countries}")
-    #    if not c in un_countries:
-    #        try:
-    #            names = pycountry.countries.search_fuzzy(c)
-    #            for n in names: print(f"  {n}")
-    #        except:
-    #            pass
-
-    #print(sorted(un_countries))
-
-    #print(df_hydro)
-    #print(df_nuclear)
-    #print(df_solar)
-    #print(df_wind)
-    #print(df_population)
-    #print(df_population.columns)
 
 if __name__ == "__main__": main()

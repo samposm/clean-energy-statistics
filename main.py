@@ -16,44 +16,58 @@ sheet_names = [
     "Hydro Generation - TWh",
     "Nuclear Generation - TWh",
     "Solar Generation - TWh",
-    "Wind Generation - TWh"
+    "Wind Generation - TWh",
 ]
 
 # UN population data
 # https://population.un.org/wpp/downloads?folder=Standard%20Projections&group=CSV%20format
 population_url = "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_TotalPopulationBySex.csv.gz"
 
-not_countries = ['Total North America', 'Central America', 'Other Caribbean',
-    'Other South America', 'Total S. & Cent. America', 'Other Europe', 'Total Europe', 'Other CIS',
-    'Total CIS', 'Other Middle East', 'Total Middle East', 'Eastern Africa', 'Middle Africa',
-    'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
-    'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
+not_countries = ["Total North America", "Central America", "Other Caribbean",
+    "Other South America", "Total S. & Cent. America", "Other Europe", "Total Europe", "Other CIS",
+    "Total CIS", "Other Middle East", "Total Middle East", "Eastern Africa", "Middle Africa",
+    "Western Africa", "Other Northern Africa", "Other Southern Africa", "Total Africa",
+    "Other Asia Pacific", "Total Asia Pacific", "Total World"]
 
+country_replacements_energy = {
+    "China Hong Kong SAR": "Hong Kong",
+    "Czech Republic": "Czechia",
+    "Trinidad & Tobago": "Trinidad and Tobago",
+    "Turkey": "Türkiye",
+    "US": "United States",
+}
+
+country_replacements_population = {
+    "China, Hong Kong SAR": "Hong Kong",
+    "Iran (Islamic Republic of)" : "Iran",
+    "Republic of Korea": "South Korea",
+    "China, Taiwan Province of China": "Taiwan",
+    "United States of America": "United States",
+    "Viet Nam": "Vietnam",
+    "Venezuela (Bolivarian Republic of)": "Venezuela",
+}
 
 def download_data(url):
-    filename = os.path.basename(url)
+    filename = Path(url).name
     file = data_path / filename
-    if not os.path.isfile(file):
+    if not file.exists():
         response = requests.get(url)
         with open(file, "wb") as f:
             f.write(response.content)
     return file
 
 def clean_data(df):
-    # drop rows at the end of the excel table
     imax = (df.iloc[:, 0] == "Total World").idxmax()
-    rows1 = df.index > imax
-    # drop empty rows
-    rows2 = df.iloc[:, 0].isnull()
-    # drop rows that are not countries
-    rows3 = df.iloc[:, 0].isin(not_countries)
-
-    rows_to_keep = ~(rows1 | rows2 | rows3)
-    return df.loc[rows_to_keep].iloc[:, :-3]  # also drop last 3 columns
+    mask = (
+        (df.index <= imax) &  # drop rows at the end
+        (df.iloc[:, 0].notnull()) &  # drop empty rows
+        (~df.iloc[:, 0].isin(not_countries))  # drop rows that are not countries
+    )
+    return df.loc[mask].iloc[:, :-3]  # also drop last 3 columns
 
 def read_energy_data(file):
-    def make_data(sheet_name):
-        return (
+    dfs = [
+        (
             # read excel sheet, get column names from 3rd row
             pd.read_excel(file, sheet_name=sheet_name, header=2)
             # clean data by dropping some rows and columns
@@ -64,7 +78,8 @@ def read_energy_data(file):
             .sort_values(by=["Country", "Year"])
             .set_index(["Country", "Year"])
         )
-    dfs = [make_data(sheet_name) for sheet_name in sheet_names]
+        for sheet_name in sheet_names
+    ]
     return pd.concat(dfs, axis=1).reset_index()
 
 def read_population_data(file):
@@ -73,33 +88,7 @@ def read_population_data(file):
         .loc[:, ['ISO3_code', 'Location', 'Time', 'PopTotal']]  # only the columns we need
     )
 
-def handle_country_names(energy_df, population_df):
-    # In energy data and in population data, some countries go by different names.
-    #
-    # Also, in population data "Russian Federation" starts from 1965. But energy data
-    # has non-zero data for "USSR" from 1965 to 1984 and then zeros. And for
-    # "Russian Federation" from pre-1985 is zeros, and non-zero from 1985. 
-    country_replacements_energy = {
-        "China Hong Kong SAR": "Hong Kong",
-        "Czech Republic": "Czechia",
-        "Trinidad & Tobago": "Trinidad and Tobago",
-        "Turkey": "Türkiye",
-        "US": "United States",
-    }
-
-    country_replacements_population = {
-        "China, Hong Kong SAR": "Hong Kong",
-        "Iran (Islamic Republic of)" : "Iran",
-        "Republic of Korea": "South Korea",
-        "China, Taiwan Province of China": "Taiwan",
-        "United States of America": "United States",
-        "Viet Nam": "Vietnam",
-        "Venezuela (Bolivarian Republic of)": "Venezuela",
-    }
-
-    energy_df["Country"] = energy_df["Country"].replace(country_replacements_energy)
-    population_df["Location"] = population_df["Location"].replace(country_replacements_population)
-
+def combine_russian_federation_and_ussr(energy_df):
     # Combine "Russian Federation" and "USSR" energy data
     for col in sheet_names:
         i_selection_rus = energy_df["Country"] == "Russian Federation"
@@ -109,15 +98,47 @@ def handle_country_names(energy_df, population_df):
         energy_df.loc[i_selection_rus, col] = rus_vals + ussr_vals
 
     # Drop "USSR" rows
-    energy_df = energy_df[energy_df["Country"] != "USSR"].reset_index(drop=True)
+    return energy_df[energy_df["Country"] != "USSR"].reset_index(drop=True)
 
+def handle_country_names(energy_df, population_df):
+    # In energy data and in population data, some countries go by different names.
+    #
+    # Also, in population data "Russian Federation" starts from 1965. But energy data
+    # has non-zero data for "USSR" from 1965 to 1984 and then zeros. And for
+    # "Russian Federation" from pre-1985 is zeros, and non-zero from 1985. 
+    energy_df["Country"] = energy_df["Country"].replace(country_replacements_energy)
+    population_df["Location"] = population_df["Location"].replace(country_replacements_population)
+    energy_df = combine_russian_federation_and_ussr(energy_df)
     return energy_df, population_df
+
+def combine_data(energy_df, population_df):
+    energy_df, population_df = handle_country_names(energy_df, population_df)
+    population_df = (
+        population_df[["Location", "Time", "PopTotal"]]
+        .rename(columns={"Location": "Country", "Time": "Year", "PopTotal": "Population"})
+    )
+    return energy_df.merge(population_df, how="left", on=["Country", "Year"])
+
+def calculate_per_capita(df):
+    # TWh produced per capita in one year
+    for col in sheet_names:
+        new_col = col.replace("Generation - TWh", "")
+        df[new_col] = df[col] / df["Population"]
+    # We don't need these columns anymore    
+    return df.drop(columns=sheet_names + ["Population"])
+
+def calculate_increase_in_10_year_windows(df):
+    def calculate_for_country(country_df):
+        diff_df = country_df.set_index("Year").diff()
+        # 10-year rolling average of yearly increases
+        return diff_df.rolling(window=10, min_periods=10).mean()
+    return df.groupby(["Country", "Energy Source"]).apply(calculate_for_country).reset_index()
 
 def main():
 
     energy_file, population_file = download_data(energy_url), download_data(population_url)
     energy_df = read_energy_data(energy_file)
-    # df columns:
+    # columns:
     #   Country
     #   Year
     #   Hydro Generation - TWh
@@ -126,24 +147,50 @@ def main():
     #   Wind Generation - TWh
 
     population_df = read_population_data(population_file)
-    # df columns: ISO3_code, Location, Time, PopTotal
+    # columns: ISO3_code, Location, Time, PopTotal
 
-    energy_df, population_df = handle_country_names(energy_df, population_df)
-
-    df = energy_df.merge(
-            population_df[["Location", "Time", "PopTotal"]]
-            .rename(columns={"Location": "Country", "Time": "Year", "PopTotal": "Population"}),
-        how="left",
-        on=["Country", "Year"],
+    increase_df = (
+        combine_data(energy_df, population_df)
+        # columns:
+        #   Country
+        #   Year
+        #   Hydro Generation - TWh
+        #   Nuclear Generation - TWh
+        #   Solar Generation - TWh
+        #   Wind Generation - TWh
+        #   Population
+        .pipe(calculate_per_capita)
+        # columns: Country, Year, Hydro, Nuclear, Solar, Wind
+        # to long format
+        .melt(id_vars=["Country", "Year"], var_name="Energy Source", value_name="TWh per Capita")
+        # df columns: Country, Year, Energy Source, TWh per Capita
+        # from TWh per capita to 10-year rolling average of yearly increases
+        .pipe(calculate_increase_in_10_year_windows)
     )
 
-    # TWh produced per capita in one year
-    for col in sheet_names:
-        df[col + " per capita"] = df[col] / df["Population"]
+    # Country and Energy Source maximums
+    max_df = (
+        increase_df.drop(columns="Energy Source")
+        .groupby(["Country", "Year"])
+        .sum()
+        .reset_index()
+        .sort_values(by="TWh per Capita", ascending=False)
+    )
+    is_duplicate_country = max_df.duplicated(subset=["Country"], keep="first")
+    max_df = max_df[~is_duplicate_country].reset_index(drop=True).head(20)
 
-    # We don't need these columns anymore    
-    df = df.drop(columns=sheet_names + ["Population"])
+    # Maximum in column "kWh per Capita", its components in column "TWh per Capita"
+    df = (
+        max_df.merge(increase_df, how="left", on=["Country", "Year"])
+        .rename(columns={"TWh per Capita_x": "Max TWh per Capita", "TWh per Capita_y": "TWh per Capita"})
+    )
+    nonzero_rows = df["TWh per Capita"] > 0 
+    df = df[nonzero_rows].reset_index(drop=True)
+    df["Max kWh per Capita"] = df["Max TWh per Capita"] * 1e6
+    df["kWh per Capita"] = df["TWh per Capita"] * 1e6
+    df = df.drop(columns=["TWh per Capita", "Max TWh per Capita"])
 
-    print(df)
+    print(df.to_string())
+
 
 if __name__ == "__main__": main()

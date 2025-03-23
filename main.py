@@ -72,6 +72,46 @@ def read_population_data(file):
         .loc[:, ['ISO3_code', 'Location', 'Time', 'PopTotal']]  # only the columns we need
     )
 
+def handle_country_names(energy_df, population_df):
+    # In energy data and in population data, some countries go by different names.
+    #
+    # Also, in population data "Russian Federation" starts from 1965. But energy data
+    # has non-zero data for "USSR" from 1965 to 1984 and then zeros. And for
+    # "Russian Federation" from pre-1985 is zeros, and non-zero from 1985. 
+    country_replacements_energy = {
+        "China Hong Kong SAR": "Hong Kong",
+        "Czech Republic": "Czechia",
+        "Trinidad & Tobago": "Trinidad and Tobago",
+        "Turkey": "Türkiye",
+        "US": "United States",
+    }
+
+    country_replacements_population = {
+        "China, Hong Kong SAR": "Hong Kong",
+        "Iran (Islamic Republic of)" : "Iran",
+        "Republic of Korea": "South Korea",
+        "China, Taiwan Province of China": "Taiwan",
+        "United States of America": "United States",
+        "Viet Nam": "Vietnam",
+        "Venezuela (Bolivarian Republic of)": "Venezuela",
+    }
+
+    energy_df["Country"] = energy_df["Country"].replace(country_replacements_energy)
+    population_df["Location"] = population_df["Location"].replace(country_replacements_population)
+
+    # Combine "Russian Federation" and "USSR" energy data
+    for col in sheet_names:
+        i_selection_rus = energy_df["Country"] == "Russian Federation"
+        i_selection_ussr = energy_df["Country"] == "USSR"
+        rus_vals = energy_df.loc[i_selection_rus, col].to_numpy()
+        ussr_vals = energy_df.loc[i_selection_ussr, col].to_numpy()
+        energy_df.loc[i_selection_rus, col] = rus_vals + ussr_vals
+
+    # Drop "USSR" rows
+    energy_df = energy_df[energy_df["Country"] != "USSR"].reset_index(drop=True)
+
+    return energy_df, population_df
+
 def main():
 
     energy_file, population_file = download_data(energy_url), download_data(population_url)
@@ -87,36 +127,21 @@ def main():
     population_df = read_population_data(population_file)
     # df columns: ISO3_code, Location, Time, PopTotal
 
-    country_replacements_energy = {
-        "China Hong Kong SAR": "Hong Kong",
-        "Czech Republic": "Czechia",
-        "Trinidad & Tobago": "Trinidad and Tobago",
-        "Turkey": "Türkiye",
-        "US": "United States",
-    }
+    energy_df, population_df = handle_country_names(energy_df, population_df)
 
-    country_replacements_population = {
-        "China, Hong Kong SAR": "Hong Kong",
-        "Iran (Islamic Republic of)" : "Iran",
-        "Republic of Korea": "South Korea",
-        "China, Taiwan Province of China": "Taiwan",
-        "United States of America": "United States",
-    }
+    df = energy_df.merge(
+        (
+            population_df[["Location", "Time", "PopTotal"]]
+            .rename(columns={"Location": "Country", "Time": "Year", "PopTotal": "Population"})
+        ),       
+        how="left",
+        on=["Country", "Year"],
+    )
 
-    energy_df["Country"] = energy_df["Country"].replace(country_replacements_energy)
-    population_df["Location"] = population_df["Location"].replace(country_replacements_population)
+    print(df)
 
-    # Combine "Russian Federation" and "USSR" energy data
-    for col in sheet_names:
-        i_selection_rus = energy_df["Country"] == "Russian Federation"
-        i_selection_ussr = energy_df["Country"] == "USSR"
-        rus_vals = energy_df.loc[i_selection_rus, col].to_numpy()
-        ussr_vals = energy_df.loc[i_selection_ussr, col].to_numpy()
-        energy_df.loc[i_selection_rus, col] = rus_vals + ussr_vals
-
-    # Drop "USSR" rows
-    energy_df = energy_df[energy_df["Country"] != "USSR"]
-
-    print(energy_df)
+    for row in df.itertuples():
+        if pd.isna(row[7]):
+            print(row)
 
 if __name__ == "__main__": main()

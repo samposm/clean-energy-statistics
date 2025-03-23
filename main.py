@@ -128,11 +128,14 @@ def calculate_per_capita(df):
     return df.drop(columns=sheet_names + ["Population"])
 
 def calculate_increase_in_10_year_windows(df):
-    def calculate_for_country(country_df):
-        diff_df = country_df.set_index("Year").diff()
-        # 10-year rolling average of yearly increases
-        return diff_df.rolling(window=10, min_periods=10).mean()
-    return df.groupby(["Country", "Energy Source"]).apply(calculate_for_country).reset_index()
+    return (
+        df.set_index(["Country", "Energy Source", "Year"])
+        .groupby(["Country", "Energy Source"])
+        # "Year" remains as index in the group objects, we apply calculations only
+        # to the "kWh per Capita" column
+        .diff().rolling(window=10, min_periods=10).mean()
+        .reset_index()
+    )
 
 def main():
 

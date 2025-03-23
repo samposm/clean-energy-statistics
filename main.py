@@ -3,10 +3,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pycountry
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import requests
 
 data_path = Path(__file__).parent.absolute() / "data"
+figure_path = Path(__file__).parent.absolute() / "figures"
 Path(data_path).mkdir(parents=True, exist_ok=True)
 
 # Statistical Review of World Energy, data
@@ -122,7 +124,7 @@ def combine_data(energy_df, population_df):
 def calculate_per_capita(df):
     # TWh produced per capita in one year
     for col in sheet_names:
-        new_col = col.replace("Generation - TWh", "")
+        new_col = col.replace(" Generation - TWh", "")
         df[new_col] = df[col] / df["Population"]
     # We don't need these columns anymore    
     return df.drop(columns=sheet_names + ["Population"])
@@ -179,11 +181,11 @@ def find_max_increases(increase_df, num_countries=20):
         .rename(columns={"kWh per Capita_x": "Combined kWh per Capita", "kWh per Capita_y": "kWh per Capita"})
     )
     # Maximum in column "kWh per Capita", its components in column "kWh per Capita"
-    nonzero_rows = df["kWh per Capita"] > 0 
-    return df[nonzero_rows].reset_index(drop=True)
+    #nonzero_rows = df["kWh per Capita"] > 0 
+    #return df[nonzero_rows].reset_index(drop=True)
+    return df
 
-def main():
-
+def prepare_data():
     energy_file, population_file = download_data(energy_url), download_data(population_url)
     energy_df = read_energy_data(energy_file)
     # columns:
@@ -200,10 +202,69 @@ def main():
     increase_df = calculate_10_year_increases(energy_df, population_df)
     # columns: Country, Year, Energy Source, kWh per Capita
 
+    increase_df["kWh per Capita"] = increase_df["kWh per Capita"].clip(lower=0)
+
     df = find_max_increases(increase_df)
     # columns: Country, Year (end of 10-year window), Combined kWh per Capita, Energy Source, kWh per Capita,
+    return df
 
-    print(df.to_string())
+def make_plot(df):
+    plt.rcParams.update({
+        'font.size': 13,
+        'font.family': 'sans-serif',
+        'axes.labelsize': 14,
+        'axes.titlesize': 16,
+        'xtick.labelsize': 12,
+        'ytick.labelsize': 12,
+        'legend.fontsize': 12
+    })
+
+    df = df.sort_values(by='Combined kWh per Capita', ascending=True).reset_index(drop=True)
+
+    countries = df['Country'].unique()
+    years = df[['Country', 'Year']].drop_duplicates()['Year']
+    year_labels = [f"{year - 10} - {year}" for year in years]
+    data_df = (
+        df[['Country', 'Energy Source', 'kWh per Capita']]
+        .pivot(index='Country', columns='Energy Source', values='kWh per Capita')
+        .reindex(countries)
+    )
+    data = {
+        "Nuclear": data_df["Nuclear"],
+        "Hydro": data_df["Hydro"],
+        "Wind": data_df["Wind"],
+        "Solar": data_df["Solar"],
+    }
+    color = {"Nuclear": "#4b6baf", "Hydro": "#3498db", "Wind": "#2ecc71", "Solar": "#e67e22"}
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    left = np.zeros(len(countries))
+    for country, energy in data.items():
+        ax.barh(countries, energy, label=country, left=left, color=color[energy.name])
+        left += energy
+    ax.legend()
+    ax.set(xlim=(0, 2000), xlabel="kWh per capita per year added")
+    ax.set_title("10-year period with largest increase in clean energy")
+ 
+     # Add grid lines for easier reading
+    ax.grid(axis='x', linestyle='--', alpha=0.7)
+    ax.set_axisbelow(True)  # Place gridlines behind bars
+
+    # Format x-axis ticks
+    ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+
+    ax2 = ax.twinx()
+    _ = ax2.set(yticks=ax.get_yticks(), yticklabels=year_labels, ybound = ax.get_ybound())
+
+    # save plot
+    plt.tight_layout()
+    plt.savefig(figure_path / "kWh-per-capita-added-2024.jpg")
+
+
+def main():
+    df = prepare_data()
+    make_plot(df)
+    #df.to_parquet(data_path / "df.pq")
 
 
 if __name__ == "__main__": main()

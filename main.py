@@ -19,10 +19,6 @@ sheet_names = [
     "Wind Generation - TWh",
 ]
 
-# UN population data
-# https://population.un.org/wpp/downloads?folder=Standard%20Projections&group=CSV%20format
-population_url = "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_TotalPopulationBySex.csv.gz"
-
 not_countries = ["Total North America", "Central America", "Other Caribbean",
     "Other South America", "Total S. & Cent. America", "Other Europe", "Total Europe", "Other CIS",
     "Total CIS", "Other Middle East", "Total Middle East", "Eastern Africa", "Middle Africa",
@@ -36,6 +32,10 @@ country_replacements_energy = {
     "Turkey": "Türkiye",
     "US": "United States",
 }
+
+# UN population data
+# https://population.un.org/wpp/downloads?folder=Standard%20Projections&group=CSV%20format
+population_url = "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_TotalPopulationBySex.csv.gz"
 
 country_replacements_population = {
     "China, Hong Kong SAR": "Hong Kong",
@@ -56,7 +56,7 @@ def download_data(url):
             f.write(response.content)
     return file
 
-def clean_data(df):
+def clean_energy_data(df):
     imax = (df.iloc[:, 0] == "Total World").idxmax()
     mask = (
         (df.index <= imax) &  # drop rows at the end
@@ -71,7 +71,7 @@ def read_energy_data(file):
             # read excel sheet, get column names from 3rd row
             pd.read_excel(file, sheet_name=sheet_name, header=2)
             # clean data by dropping some rows and columns
-            .pipe(clean_data)
+            .pipe(clean_energy_data)
             # change from wide to long format
             .melt(id_vars="Terawatt-hours", var_name="Year", value_name=sheet_name)
             .rename(columns={"Terawatt-hours": "Country"})
@@ -164,7 +164,10 @@ def main():
         # to long format
         .melt(id_vars=["Country", "Year"], var_name="Energy Source", value_name="TWh per Capita")
         # df columns: Country, Year, Energy Source, TWh per Capita
-        # from TWh per capita to 10-year rolling average of yearly increases
+        # from TWh to kWh
+        .assign(**{"kWh per Capita": lambda x: x["TWh per Capita"] * 1e6})
+        .drop(columns="TWh per Capita")
+        # from kWh per capita to 10-year rolling average of yearly increases
         .pipe(calculate_increase_in_10_year_windows)
     )
 
@@ -174,7 +177,7 @@ def main():
         .groupby(["Country", "Year"])
         .sum()
         .reset_index()
-        .sort_values(by="TWh per Capita", ascending=False)
+        .sort_values(by="kWh per Capita", ascending=False)
     )
     is_duplicate_country = max_df.duplicated(subset=["Country"], keep="first")
     max_df = max_df[~is_duplicate_country].reset_index(drop=True).head(20)
@@ -182,13 +185,10 @@ def main():
     # Maximum in column "kWh per Capita", its components in column "TWh per Capita"
     df = (
         max_df.merge(increase_df, how="left", on=["Country", "Year"])
-        .rename(columns={"TWh per Capita_x": "Max TWh per Capita", "TWh per Capita_y": "TWh per Capita"})
+        .rename(columns={"kWh per Capita_x": "Combined kWh per Capita", "kWh per Capita_y": "kWh per Capita"})
     )
-    nonzero_rows = df["TWh per Capita"] > 0 
+    nonzero_rows = df["kWh per Capita"] > 0 
     df = df[nonzero_rows].reset_index(drop=True)
-    df["Max kWh per Capita"] = df["Max TWh per Capita"] * 1e6
-    df["kWh per Capita"] = df["TWh per Capita"] * 1e6
-    df = df.drop(columns=["TWh per Capita", "Max TWh per Capita"])
 
     print(df.to_string())
 

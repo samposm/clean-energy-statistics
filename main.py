@@ -23,9 +23,10 @@ sheet_names = [
 # https://population.un.org/wpp/downloads?folder=Standard%20Projections&group=CSV%20format
 population_url = "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_TotalPopulationBySex.csv.gz"
 
-not_countries = ['Total North America', 'Central America', 'Other Caribbean', 'Other South America', 'Total S. & Cent. America',
-    'Other Europe', 'Total Europe', 'Other CIS', 'Total CIS', 'Other Middle East', 'Total Middle East',
-    'Eastern Africa', 'Middle Africa', 'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
+not_countries = ['Total North America', 'Central America', 'Other Caribbean',
+    'Other South America', 'Total S. & Cent. America', 'Other Europe', 'Total Europe', 'Other CIS',
+    'Total CIS', 'Other Middle East', 'Total Middle East', 'Eastern Africa', 'Middle Africa',
+    'Western Africa', 'Other Northern Africa', 'Other Southern Africa', 'Total Africa',
     'Other Asia Pacific', 'Total Asia Pacific', 'Total World']
 
 
@@ -130,18 +131,19 @@ def main():
     energy_df, population_df = handle_country_names(energy_df, population_df)
 
     df = energy_df.merge(
-        (
             population_df[["Location", "Time", "PopTotal"]]
-            .rename(columns={"Location": "Country", "Time": "Year", "PopTotal": "Population"})
-        ),       
+            .rename(columns={"Location": "Country", "Time": "Year", "PopTotal": "Population"}),
         how="left",
         on=["Country", "Year"],
     )
 
-    print(df)
+    # TWh produced per capita in one year
+    for col in sheet_names:
+        df[col + " per capita"] = df[col] / df["Population"]
 
-    for row in df.itertuples():
-        if pd.isna(row[7]):
-            print(row)
+    # We don't need these columns anymore    
+    df = df.drop(columns=sheet_names + ["Population"])
+
+    print(df)
 
 if __name__ == "__main__": main()

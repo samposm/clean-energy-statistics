@@ -137,6 +137,51 @@ def calculate_increase_in_10_year_windows(df):
         .reset_index()
     )
 
+def calculate_10_year_increases(energy_df, population_df):
+    return (
+        combine_data(energy_df, population_df)
+        # columns:
+        #   Country
+        #   Year
+        #   Hydro Generation - TWh
+        #   Nuclear Generation - TWh
+        #   Solar Generation - TWh
+        #   Wind Generation - TWh
+        #   Population
+        .pipe(calculate_per_capita)
+        # columns: Country, Year, Hydro, Nuclear, Solar, Wind
+        # to long format
+        .melt(id_vars=["Country", "Year"], var_name="Energy Source", value_name="TWh per Capita")
+        # columns: Country, Year, Energy Source, TWh per Capita
+        # from TWh to kWh
+        .assign(**{"kWh per Capita": lambda x: x["TWh per Capita"] * 1e6})
+        .drop(columns="TWh per Capita")
+        # from kWh per capita to 10-year rolling average of yearly increases
+        .pipe(calculate_increase_in_10_year_windows)
+    )
+
+def find_max_increases(increase_df, num_countries=20):
+    # Countries by maximum 10 year increases, ordered
+    max_df = (
+        increase_df.drop(columns="Energy Source")
+        .groupby(["Country", "Year"])
+        .sum()
+        .reset_index()
+        .sort_values(by="kWh per Capita", ascending=False)
+    )
+    # Drop second etc. maximums from a same country
+    is_duplicate_country = max_df.duplicated(subset=["Country"], keep="first")
+    max_df = max_df[~is_duplicate_country].reset_index(drop=True).head(num_countries)
+
+    # Merge back the energy sources contributing to the maximums
+    df = (
+        max_df.merge(increase_df, how="left", on=["Country", "Year"])
+        .rename(columns={"kWh per Capita_x": "Combined kWh per Capita", "kWh per Capita_y": "kWh per Capita"})
+    )
+    # Maximum in column "kWh per Capita", its components in column "kWh per Capita"
+    nonzero_rows = df["kWh per Capita"] > 0 
+    return df[nonzero_rows].reset_index(drop=True)
+
 def main():
 
     energy_file, population_file = download_data(energy_url), download_data(population_url)
@@ -152,46 +197,11 @@ def main():
     population_df = read_population_data(population_file)
     # columns: ISO3_code, Location, Time, PopTotal
 
-    increase_df = (
-        combine_data(energy_df, population_df)
-        # columns:
-        #   Country
-        #   Year
-        #   Hydro Generation - TWh
-        #   Nuclear Generation - TWh
-        #   Solar Generation - TWh
-        #   Wind Generation - TWh
-        #   Population
-        .pipe(calculate_per_capita)
-        # columns: Country, Year, Hydro, Nuclear, Solar, Wind
-        # to long format
-        .melt(id_vars=["Country", "Year"], var_name="Energy Source", value_name="TWh per Capita")
-        # df columns: Country, Year, Energy Source, TWh per Capita
-        # from TWh to kWh
-        .assign(**{"kWh per Capita": lambda x: x["TWh per Capita"] * 1e6})
-        .drop(columns="TWh per Capita")
-        # from kWh per capita to 10-year rolling average of yearly increases
-        .pipe(calculate_increase_in_10_year_windows)
-    )
+    increase_df = calculate_10_year_increases(energy_df, population_df)
+    # columns: Country, Year, Energy Source, kWh per Capita
 
-    # Country and Energy Source maximums
-    max_df = (
-        increase_df.drop(columns="Energy Source")
-        .groupby(["Country", "Year"])
-        .sum()
-        .reset_index()
-        .sort_values(by="kWh per Capita", ascending=False)
-    )
-    is_duplicate_country = max_df.duplicated(subset=["Country"], keep="first")
-    max_df = max_df[~is_duplicate_country].reset_index(drop=True).head(20)
-
-    # Maximum in column "kWh per Capita", its components in column "TWh per Capita"
-    df = (
-        max_df.merge(increase_df, how="left", on=["Country", "Year"])
-        .rename(columns={"kWh per Capita_x": "Combined kWh per Capita", "kWh per Capita_y": "kWh per Capita"})
-    )
-    nonzero_rows = df["kWh per Capita"] > 0 
-    df = df[nonzero_rows].reset_index(drop=True)
+    df = find_max_increases(increase_df)
+    # columns: Country, Year (end of 10-year window), Combined kWh per Capita, Energy Source, kWh per Capita,
 
     print(df.to_string())
 

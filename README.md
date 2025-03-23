@@ -12,6 +12,6 @@ This project pulls 2024 statistics, and includes hydropower, to plot:
 ![energy-figure-2024][fig2]
 
 [fig1]: https://github.com/samposm/clean-energy-statistics/blob/main/figures/kWh-per-capita-added-science-2016.jpg
-[fig2]: https://github.com/samposm/clean-energy-statistics/blob/main/figures/kWh-per-capita-added-2024.jpg
+[fig2]: https://github.com/samposm/clean-energy-statistics/blob/main/figures/kWh-per-capita-added-2024.png
 
-For each country we search for that 10-period, during which the most clean energy production per capita was. The plot a bar chart of the 20 top countries. The chart showes the average increase per capita per year in this 10-year window.
+For each country we search for that 10-period, during which the most clean energy production per capita was added. Then plot a bar chart of the 20 top countries. The chart shows the average increase per capita per year in this 10-year window.

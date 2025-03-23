@@ -258,7 +258,7 @@ def make_plot(df):
 
     # save plot
     plt.tight_layout()
-    plt.savefig(figure_path / "kWh-per-capita-added-2024.jpg")
+    plt.savefig(figure_path / "kWh-per-capita-added-2024.png")
 
 
 def main():
